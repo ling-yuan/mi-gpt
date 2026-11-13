@@ -173,6 +173,118 @@ export class BaseSpeaker {
     await sleep(100);
   }
 
+  /**
+   * 按中文语速估算播放时长（毫秒）
+   *
+   * 约 3.5 字/秒，并设上下限，供无法查询播放状态的机型兜底
+   */
+  estimateSpeechMs(text?: string, timeoutMs = 30_000) {
+    const len = (text ?? "").replace(/\s+/g, "").length;
+    // 约 4 字/秒，略缩短等待，减少无效应答与大模型播报之间的空档
+    return Math.min(timeoutMs, Math.max(1500, Math.ceil(len * 230) + 400));
+  }
+
+  /**
+   * 无法查询播放状态时，按文本时长等待
+   */
+  private async waitByEstimate(options: {
+    hasNewMsg: () => boolean;
+    fallbackText?: string;
+    timeoutMs: number;
+  }): Promise<"ok" | "break"> {
+    const waitMs = this.estimateSpeechMs(options.fallbackText, options.timeoutMs);
+    if (this.debug) {
+      this.logger.debug(`无法查询播放状态，按文本估算等待 ${waitMs}ms`);
+    }
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < waitMs) {
+      if (options.hasNewMsg()) {
+        return "break";
+      }
+      const remain = waitMs - (Date.now() - startedAt);
+      await sleep(Math.min(this.checkInterval, Math.max(remain, 0)));
+    }
+    return "ok";
+  }
+
+  /**
+   * 等待设备播放结束（不依赖 streamResponse）
+   *
+   * 用于等小爱原句播完后再播放大模型答案，避免截断。
+   * L05C 等机型 getStatus 不可用时，按 fallbackText 估算等待，不中断后续 TTS。
+   */
+  async waitForIdle(options?: {
+    hasNewMsg?: () => boolean;
+    /** 最长等待时间（毫秒），默认 30 秒 */
+    timeoutMs?: number;
+    /** 无法查询播放状态时，按该文本估算等待时长 */
+    fallbackText?: string;
+  }): Promise<"ok" | "break" | "timeout"> {
+    const hasNewMsg = options?.hasNewMsg ?? (() => false);
+    const timeoutMs = options?.timeoutMs ?? 30_000;
+    const startedAt = Date.now();
+
+    // 无 playingCommand 且关闭流式响应的机型，通常查不到播放状态，直接估算
+    if (!this.streamResponse && !this.playingCommand) {
+      return this.waitByEstimate({
+        hasNewMsg,
+        fallbackText: options?.fallbackText,
+        timeoutMs,
+      });
+    }
+
+    // 短暂等待，避免状态尚未刷新就误判为空闲
+    await sleep(this.checkTTSStatusAfter * 1000);
+
+    let failed = 0;
+    const maxFailed = 3;
+    while (Date.now() - startedAt < timeoutMs) {
+      if (hasNewMsg()) {
+        return "break";
+      }
+
+      let playing: any = { status: "idle" };
+      let res = this.playingCommand
+        ? await this.MiIOT!.getProperty(
+            this.playingCommand[0],
+            this.playingCommand[1]
+          )
+        : await this.MiNA!.getStatus();
+
+      if (this.debug) {
+        this.logger.debug(jsonEncode({ waitForIdle: res ?? "undefined" }));
+      }
+      if (this.playingCommand && res === this.playingCommand[2]) {
+        playing = { status: "playing" };
+      }
+      if (!this.playingCommand) {
+        playing = { ...playing, ...res };
+      }
+
+      if (res == null) {
+        failed += 1;
+        // 连续查不到状态时改走估算，避免卡死且仍能播放大模型答案
+        if (failed >= maxFailed) {
+          const remain = timeoutMs - (Date.now() - startedAt);
+          return this.waitByEstimate({
+            hasNewMsg,
+            fallbackText: options?.fallbackText,
+            timeoutMs: Math.max(remain, 2000),
+          });
+        }
+        await sleep(this.checkInterval);
+        continue;
+      }
+
+      failed = 0;
+      if (playing.status !== "playing") {
+        return "ok";
+      }
+      await sleep(this.checkInterval);
+    }
+    return "timeout";
+  }
+
   audioBeep?: string;
   responding = false;
   /**

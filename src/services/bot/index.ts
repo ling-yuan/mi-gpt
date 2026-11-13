@@ -142,9 +142,11 @@ export class MyBot {
 
   async run() {
     this.speaker.askAI = (msg) => this.ask(msg);
-    const { bot } = await this.manager.init();
+    const { bot, master } = await this.manager.init();
     if (bot) {
       this.speaker.name = bot.name;
+      // 启动时打印实际生效的人设，便于核对 .migpt.js 是否写入数据库
+      this.speaker.logger.log(`🎭 角色：${bot.name} / 主人：${master?.name ?? "?"}`);
     }
     return this.speaker.run();
   }

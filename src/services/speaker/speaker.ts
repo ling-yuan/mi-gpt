@@ -25,6 +25,10 @@ export interface SpeakerCommand {
    * 命中后执行的操作，返回值非空时会自动回复给用户
    */
   run: (msg: QueryMessage) => Promise<SpeakerAnswer | undefined | void>;
+  /**
+   * 为 true 时不立刻 pause，避免截断小爱正在播放的回复
+   */
+  skipPause?: boolean;
 }
 
 export type SpeakerConfig = BaseSpeakerConfig & {
@@ -87,6 +91,10 @@ export class Speaker extends BaseSpeaker {
       if (nextMsg) {
         this.responding = false;
         this.logger.log("🔥 " + nextMsg.text);
+        // 同时打印小爱本身的回复，便于核对无效应答匹配
+        this.logger.log(
+          "💬 " + (nextMsg.answer ? nextMsg.answer : "(无回复文本)")
+        );
         // 异步处理消息，不阻塞正常消息拉取
         this.onMessage(nextMsg);
       }
@@ -125,8 +133,10 @@ export class Speaker extends BaseSpeaker {
     const { noNewMsg } = this.checkIfHasNewMsg(msg);
     for (const command of this.commands) {
       if (command.match(msg)) {
-        // 关闭小爱的回复
-        await this.MiNA!.pause();
+        // 默认关闭小爱的回复；skipPause 时保留小爱播放（如无效应答转大模型）
+        if (!command.skipPause) {
+          await this.MiNA!.pause();
+        }
         // 执行命令
         const answer = await command.run(msg);
         // 回复用户

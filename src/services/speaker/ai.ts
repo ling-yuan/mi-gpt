@@ -1,4 +1,5 @@
-import { pickOne, toSet } from "../../utils/base";
+import { pickOne } from "../../utils/base";
+import { normalizeReplyText } from "../../utils/string";
 import {
   Speaker,
   SpeakerCommand,
@@ -6,6 +7,18 @@ import {
   QueryMessage,
   SpeakerAnswer,
 } from "./speaker";
+
+/** 小爱回答不上来时的默认文案（与 docs/no-answer.md 一致） */
+const kDefaultNoAnswerReplies = [
+  "这可把我难住了，看来要更努力学习了",
+  "这个我暂时还回答不上诶，我要再学习学习",
+  "这个问题我暂时还回答不上，需要再学习一下",
+  "这个问题我还在学习中，先聊点别的吧",
+  "被你问住了，看来要更努力学习了",
+  "这个问题把我难住了，我会继续努力的",
+  "被难住了诶，看来我还要再学习一下",
+  "对不起，我还在学习中!",
+];
 
 export type AISpeakerConfig = SpeakerConfig & {
   askAI?: (msg: QueryMessage) => Promise<SpeakerAnswer>;
@@ -28,53 +41,21 @@ export type AISpeakerConfig = SpeakerConfig & {
    */
   onAIError?: string[];
   /**
-   * 设备名称，用来唤醒/退出对话模式等
+   * 设备名称，用来切换音色等
    *
    * 建议使用常见词语，避免使用多音字和容易混淆读音的词语
    */
   name?: string;
   /**
-   * 召唤关键词
-   *
-   * 当消息以召唤关键词开头时，会调用 AI 来响应用户消息
-   *
-   * 比如：请，你，问问傻妞
+   * 小爱回复命中下列文案时，视为回答不上来，转交大模型
    */
-  callAIKeywords?: string[];
+  noAnswerReplies?: string[];
   /**
    * 切换音色前缀
    *
    * 比如：音色切换到（文静毛毛）
    */
   switchSpeakerKeywords?: string[];
-  /**
-   * 唤醒关键词
-   *
-   * 当消息中包含唤醒关键词时，会进入 AI 唤醒状态
-   *
-   * 比如：打开/进入/召唤傻妞
-   */
-  wakeUpKeywords?: string[];
-  /**
-   * 退出关键词
-   *
-   * 当消息中包含退出关键词时，会退出 AI 唤醒状态
-   *
-   * 比如：关闭/退出/再见傻妞
-   */
-  exitKeywords?: string[];
-  /**
-   * 进入 AI 模式的欢迎语
-   *
-   * 比如：你好，我是傻妞，很高兴认识你
-   */
-  onEnterAI?: string[];
-  /**
-   * 退出 AI 模式的提示语
-   *
-   * 比如：傻妞已退出
-   */
-  onExitAI?: string[];
   /**
    * AI 回答开始提示音
    */
@@ -94,11 +75,7 @@ export class AISpeaker extends Speaker {
   askAI: AISpeakerConfig["askAI"];
   name: string;
   switchSpeakerKeywords: string[];
-  onEnterAI: string[];
-  onExitAI: string[];
-  callAIKeywords: string[];
-  wakeUpKeywords: string[];
-  exitKeywords: string[];
+  noAnswerReplies: string[];
   onAIAsking: string[];
   onAIReplied: string[];
   onAIError: string[];
@@ -111,11 +88,7 @@ export class AISpeaker extends Speaker {
       askAI,
       name = "傻妞",
       switchSpeakerKeywords,
-      callAIKeywords = ["请", "你", "傻妞"],
-      wakeUpKeywords = ["打开", "进入", "召唤"],
-      exitKeywords = ["关闭", "退出", "再见"],
-      onEnterAI = ["你好，我是傻妞，很高兴认识你"],
-      onExitAI = ["傻妞已退出"],
+      noAnswerReplies = kDefaultNoAnswerReplies,
       onAIAsking = ["让我先想想", "请稍等"],
       onAIReplied = ["我说完了", "还有其他问题吗"],
       onAIError = ["啊哦，出错了，请稍后再试吧！"],
@@ -124,11 +97,7 @@ export class AISpeaker extends Speaker {
     } = config;
     this.askAI = askAI;
     this.name = name;
-    this.callAIKeywords = callAIKeywords;
-    this.wakeUpKeywords = wakeUpKeywords;
-    this.exitKeywords = exitKeywords;
-    this.onEnterAI = onEnterAI;
-    this.onExitAI = onExitAI;
+    this.noAnswerReplies = noAnswerReplies;
     this.onAIError = onAIError;
     this.onAIAsking = onAIAsking;
     this.onAIReplied = onAIReplied;
@@ -138,49 +107,8 @@ export class AISpeaker extends Speaker {
       switchSpeakerKeywords ?? getDefaultSwitchSpeakerPrefix();
   }
 
-  async enterKeepAlive() {
-    if (!this.streamResponse) {
-      await this.response({ text: "您已关闭流式响应(streamResponse)，无法使用连续对话模式" });
-      return;
-    }
-    // 回应
-    const text = pickOne(this.onEnterAI);
-    if (text) {
-      await this.response({ text, keepAlive: true });
-    }
-    // 唤醒
-    await super.enterKeepAlive();
-  }
-
-  async exitKeepAlive() {
-    // 退出唤醒状态
-    await super.exitKeepAlive();
-    // 回应
-    const text = pickOne(this.onExitAI);
-    if (text) {
-      await this.response({ text, keepAlive: false, playSFX: false });
-    }
-    await this.unWakeUp();
-  }
-
   get commands() {
     return [
-      {
-        match: (msg) =>
-          !this.keepAlive &&
-          this.wakeUpKeywords.some((e) => msg.text.startsWith(e)),
-        run: async (msg) => {
-          await this.enterKeepAlive();
-        },
-      },
-      {
-        match: (msg) =>
-          this.keepAlive &&
-          this.exitKeywords.some((e) => msg.text.startsWith(e)),
-        run: async (msg) => {
-          await this.exitKeepAlive();
-        },
-      },
       {
         match: (msg) =>
           this.switchSpeakerKeywords.some((e) => msg.text.startsWith(e)),
@@ -202,15 +130,40 @@ export class AISpeaker extends Speaker {
       // todo 考虑添加清除上下文指令
       ...this._commands,
       {
-        match: (msg) =>
-          this.keepAlive ||
-          this.callAIKeywords.some((e) => msg.text.startsWith(e)),
+        // 不立刻 pause，等小爱无效应答播完后再播放大模型答案
+        skipPause: true,
+        match: (msg) => {
+          if (!msg.answer) {
+            return false;
+          }
+          // 忽略空白差异，避免「对不起， 我还在学习中!」与实际播报文案对不上
+          const answer = normalizeReplyText(msg.answer);
+          return this.noAnswerReplies.some(
+            (e) => answer === normalizeReplyText(e)
+          );
+        },
         run: (msg) => this.askAIForAnswer(msg),
       },
     ] as SpeakerCommand[];
   }
 
   private _askAIForAnswerSteps: AnswerStep[] = [
+    async (msg, data) => {
+      // 并行请求大模型，与小爱播放重叠以缩短等待
+      const answerPromise = this.askAI?.(msg);
+      return { data: { answerPromise } };
+    },
+    async (msg, data) => {
+      // 等小爱原句播完，再开始本项目 TTS（查不到状态时按无效应答文本估算）
+      const { hasNewMsg } = this.checkIfHasNewMsg(msg);
+      const waitRes = await this.waitForIdle({
+        hasNewMsg,
+        fallbackText: msg.answer,
+      });
+      if (waitRes === "break" || hasNewMsg() || this.status !== "running") {
+        return { stop: true };
+      }
+    },
     async (msg, data) => {
       // 思考中
       const text = pickOne(this.onAIAsking);
@@ -219,8 +172,8 @@ export class AISpeaker extends Speaker {
       }
     },
     async (msg, data) => {
-      // 调用 AI 获取回复
-      let answer = await this.askAI?.(msg);
+      // 等待大模型回复（可能已在等待播放时完成）
+      let answer = await data.answerPromise;
       return { data: { answer } };
     },
     async (msg, data) => {
@@ -253,16 +206,11 @@ export class AISpeaker extends Speaker {
         }
       }
     },
-    async (msg, data) => {
-      if (this.keepAlive) {
-        // 重新唤醒
-        await this.wakeUp();
-      }
-    },
   ];
 
   async askAIForAnswer(msg: QueryMessage) {
-    let data: { answer?: SpeakerAnswer } = {};
+    let data: { answer?: SpeakerAnswer; answerPromise?: Promise<SpeakerAnswer> } =
+      {};
     const { hasNewMsg } = this.checkIfHasNewMsg(msg);
     for (const action of this._askAIForAnswerSteps) {
       const res = await action(msg, data);
