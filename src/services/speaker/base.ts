@@ -327,6 +327,12 @@ export class BaseSpeaker {
     const ttsNotXiaoai = tts !== "xiaoai" && !audio;
     playSFX = this.streamResponse && ttsNotXiaoai && playSFX;
 
+    // L05C 的媒体状态不反映原生 TTS，分段下发会截断上一段。
+    const bufferNativeTTS =
+      tts === "xiaoai" &&
+      !audio &&
+      this.MiIOT?.account?.device?.model === "xiaomi.wifispeaker.l05c";
+
     if (ttsNotXiaoai && !stream) {
       // 长文本 TTS 转化成 stream 分段模式
       stream = StreamResponse.createStreamResponse(text!);
@@ -339,9 +345,14 @@ export class BaseSpeaker {
       let replyText = "";
       while (true) {
         let { nextSentence, noMore } = stream.getNextResponse();
-        if (!this.streamResponse) {
+        if (!this.streamResponse || bufferNativeTTS) {
           nextSentence = await stream.getFinalResult();
           noMore = true;
+          if (bufferNativeTTS && (options.hasNewMsg?.() || !this.responding)) {
+            stream.cancel();
+            this.responding = false;
+            return "break";
+          }
         }
         if (nextSentence) {
           if (replyText.length < 1) {

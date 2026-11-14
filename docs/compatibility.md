@@ -9,7 +9,7 @@
 | 名称                     | 型号                                                                                                | ttsCommand | wakeUpCommand | playingCommand | streamResponse | 反馈来源                                                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------------- | ---------- | ------------- | -------------- | -------------- | --------------------------------------------------------------------------------- |
 | Xiaomi 智能音箱 Pro      | [OH2P](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-oh2p:1) | `[7, 3]`   | `[7, 1]`      | -              | true           | [@idootop](https://github.com/idootop)                                            |
-| Xiaomi 智能音箱      | [OH2](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-oh2:1) | `[5, 3]`   | `[5, 1]`      |   `[3, 1, 1]`            | true           | [@fuchao](https://github.com/fuchao2pku)                                            |
+| Xiaomi 智能音箱          | [OH2](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-oh2:1)   | `[5, 3]`   | `[5, 1]`      | `[3, 1, 1]`    | true           | [@fuchao](https://github.com/fuchao2pku)                                          |
 | 小爱音箱 Pro             | [LX06](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-lx06:2) | `[5, 1]`   | `[5, 3]`      | -              | true           | [@idootop](https://github.com/idootop)                                            |
 | 小米 AI 音箱             | [S12](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-s12:2)   | `[5, 1]`   | `[5, 3]`      | -              | true           | 微信: CMSJ                                                                        |
 | 小米 AI 音箱（第二代）   | [L15A](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-l15a:2) | `[7, 3]`   | `[7, 1]`      | `[3, 1, 1]`    | true           | 微信: 龙之广                                                                      |
@@ -24,6 +24,8 @@
 
 > 部分机型的 MIoT 接口不支持查询设备播放状态或查询状态异常，比如小米音箱 Play 增强版（L05C），将会导致 `MiGPT` 部分功能异常，无法使用连续对话等，此时需要关闭 `streamResponse`。相关 [issue](https://github.com/idootop/mi-gpt/issues/14)
 
+L05C 的 MiNA 媒体播放状态也不能可靠反映原生 TTS 是否播完。本项目会对该型号的原生 TTS 自动合并完整回答后一次播报，避免后一段截断前一段；即使开启 `streamResponse`，也不会分段播报原生 TTS。第三方 TTS 不受此处理影响。
+
 | 名称                          | 型号                                                                                                | ttsCommand | wakeUpCommand | playingCommand | streamResponse | 反馈来源                                                                               |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- | ---------- | ------------- | -------------- | -------------- | -------------------------------------------------------------------------------------- |
 | 小爱音箱                      | [L06A](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-l06a:2) | `[5, 1]`   | `[5, 2]`      | -              | false          | [@zhanglc](https://github.com/idootop/mi-gpt/issues/42)                                |
@@ -34,8 +36,8 @@
 | 小爱触屏音箱                  | [LX04](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-lx04:2) | `[5, 1]`   | `[5, 2]`      | -              | false          | [@ilovesouthpark](https://github.com/idootop/mi-gpt/issues/92#issuecomment-2184678990) |
 | Xiaomi 智能家庭屏 Mini        | [ASX4B](https://home.miot-spec.com/spec/xiaomi.wifispeaker.x4b)                                     | `[5, 3]`   | `[5, 1]`      | -              | false          | [@VincentGresham](https://github.com/idootop/mi-gpt/issues/92#issuecomment-2645762809) |
 | Xiaomi 智能家庭屏 6           | [X6A](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-x6a:1)   | `[7, 3]`   | `[7, 1]`      | -              | false          | [@Hongwing](https://github.com/idootop/mi-gpt/issues/80)                               |
-| Redmi 小爱触屏音箱 Pro 8 英寸 | [X08E](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-x08e:1) | `[7, 3]`   | `[7, 1]`      | -              | false          | [@shangjiyu](https://github.com/idootop/mi-gpt/issues/20)     
-| Xiaomi 智能家庭屏 Pro 8 | [X8F](https://home.miot-spec.com/spec/xiaomi.wifispeaker.x8f) | `[7, 3]`   | `[7, 1]`      | -              | false          |  [@xiaodou](https://github.com/idootop/mi-gpt/pull/301)
+| Redmi 小爱触屏音箱 Pro 8 英寸 | [X08E](https://home.miot-spec.com/spec?type=urn:miot-spec-v2:device:speaker:0000A015:xiaomi-x08e:1) | `[7, 3]`   | `[7, 1]`      | -              | false          | [@shangjiyu](https://github.com/idootop/mi-gpt/issues/20)                              |
+| Xiaomi 智能家庭屏 Pro 8       | [X8F](https://home.miot-spec.com/spec/xiaomi.wifispeaker.x8f)                                       | `[7, 3]`   | `[7, 1]`      | -              | false          | [@xiaodou](https://github.com/idootop/mi-gpt/pull/301)                                 |
 
 ## ❌ 不支持
 
